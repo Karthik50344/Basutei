@@ -19,7 +19,7 @@ def send_sos():
     bus_id = data.get('busId')
 
     # Get all users
-    users_ref = db.reference('users')
+    users_ref = db.reference('Users')
     users = users_ref.get()
 
     tokens = []
