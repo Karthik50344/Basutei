@@ -32,16 +32,28 @@ def send_sos():
     if not tokens:
         return jsonify({'message': 'No tokens found'}), 404
 
-    # Send FCM message
-    message = messaging.MulticastMessage(
-        notification=messaging.Notification(
-            title="🚨 SOS Alert",
-            body=f"Emergency reported from Bus {bus_id} at {institute}",
-        ),
-        tokens=tokens
-    )
+    # Send FCM message individually as fallback
+    success_count = 0
+    failure_count = 0
+    
+    for token in tokens:
+        try:
+            message = messaging.Message(
+                notification=messaging.Notification(
+                    title="🚨 SOS Alert",
+                    body=f"Emergency reported from Bus {bus_id} at {institute}",
+                ),
+                token=token
+            )
+            response = messaging.send(message)
+            print(f"Sent message to {token}: {response}")
+            success_count += 1
+        except Exception as e:
+            print(f"Failed to send message to {token}: {e}")
+            failure_count += 1
+    
+    print(f"✅ Successfully sent: {success_count}, ❌ Failed: {failure_count}")
 
-    response = messaging.send_multicast(message)
     return jsonify({'success': response.success_count, 'failure': response.failure_count})
 
 if __name__ == '__main__':
