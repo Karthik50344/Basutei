@@ -7,7 +7,7 @@ import os
 firebase_credentials = json.loads(os.environ['GOOGLE_CREDENTIALS'])
 cred = credentials.Certificate(firebase_credentials)
 firebase_admin.initialize_app(cred, {
-    'databaseURL': 'https://your-database.firebaseio.com'
+    'databaseURL': 'https://campus-transport-safety-default-rtdb.firebaseio.com/'
 })
 
 main = Flask(__name__)
