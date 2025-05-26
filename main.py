@@ -54,7 +54,7 @@ def send_sos():
     
     print(f"✅ Successfully sent: {success_count}, ❌ Failed: {failure_count}")
 
-    return jsonify({'success': response.success_count, 'failure': response.failure_count})
+    return jsonify({'success': success_count, 'failure': failure_count})
 
 if __name__ == '__main__':
     main.run(port=10000)
