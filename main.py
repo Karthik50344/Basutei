@@ -42,4 +42,4 @@ def send_sos():
     return jsonify({'success': response.success_count, 'failure': response.failure_count})
 
 if __name__ == '__main__':
-    app.run(port=5000)
+    app.run(port=10000)
