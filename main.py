@@ -7,9 +7,9 @@ firebase_admin.initialize_app(cred, {
     'databaseURL': 'https://your-database.firebaseio.com'
 })
 
-app = Flask(__name__)
+main = Flask(__name__)
 
-@app.route('/send_sos', methods=['POST'])
+@main.route('/send_sos', methods=['POST'])
 def send_sos():
     data = request.get_json()
     institute = data.get('institute')
@@ -42,4 +42,4 @@ def send_sos():
     return jsonify({'success': response.success_count, 'failure': response.failure_count})
 
 if __name__ == '__main__':
-    app.run(port=10000)
+    main.run(port=10000)
