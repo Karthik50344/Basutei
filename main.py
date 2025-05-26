@@ -24,7 +24,7 @@ def send_sos():
 
     tokens = []
     for user_id, user_data in users.items():
-        if user_data.get('institute') == institute and user_data.get('role') == 1:
+        if user_data.get('institute') == institute and user_data.get('Role') == 1:
             token = user_data.get('fcmToken')
             if token:
                 tokens.append(token)
