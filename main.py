@@ -55,6 +55,49 @@ def send_sos():
     print(f"✅ Successfully sent: {success_count}, ❌ Failed: {failure_count}")
 
     return jsonify({'success': success_count, 'failure': failure_count})
+    
+@app.route('/send-alert', methods=['POST'])
+def send_alert():
+    data = request.json
+    institute = data.get("institute")
+    bus = data.get("bus")
+    user = data.get("user")
+
+    if not institute or not bus:
+        return jsonify({"error": "Missing 'institute' or 'bus'"}), 400
+
+    users_ref = db.reference("Users")
+    users = users_ref.get()
+
+    success_count = 0
+    failure_count = 0
+
+    for uid, user in users.items():
+        if (
+            user.get("institute") == institute and
+            user.get("Bus") == bus and
+            user.get("Role") in [2, 3]
+        ):
+            token = user.get("fcmToken")
+            if token:
+                message = messaging.Message(
+                    notification=messaging.Notification(
+                        title="🚨 Alert",
+                        body=f"Emergency reported from {user}",
+                    ),
+                    token=token
+                )
+                try:
+                    messaging.send(message)
+                    success_count += 1
+                except Exception as send_error:
+                    print(f"Failed to send to {token}: {send_error}")
+                    failure_count += 1
+
+    return jsonify({
+        "success_count": success_count,
+        "failure_count": failure_count
+    })
 
 if __name__ == '__main__':
     main.run(port=10000)
