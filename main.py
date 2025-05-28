@@ -56,7 +56,7 @@ def send_sos():
 
     return jsonify({'success': success_count, 'failure': failure_count})
     
-@app.route('/send-alert', methods=['POST'])
+@main.route('/send-alert', methods=['POST'])
 def send_alert():
     data = request.json
     institute = data.get("institute")
