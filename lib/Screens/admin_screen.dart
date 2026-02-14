@@ -1,12 +1,15 @@
-import 'package:basutei/Screens/register_screen.dart';
+// lib/Screens/admin_screen.dart
 import 'package:flutter/material.dart';
-import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
-import 'add_bus_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../services/database_service.dart';
+import '../models/bus_model.dart';
+import '../models/user_model.dart';
+import 'add_bus_screen.dart';
 import 'edit_user_screen.dart';
 import 'live_bus_route.dart';
 import 'login_screen.dart';
+import 'register_screen.dart';
 
 class AdminScreen extends StatefulWidget {
   final String institute;
@@ -18,31 +21,13 @@ class AdminScreen extends StatefulWidget {
 }
 
 class _AdminScreenState extends State<AdminScreen> {
-  String _roleToString(dynamic role) {
-    switch (role) {
-      case 1:
-        return "Admin";
-      case 2:
-        return "Driver";
-      case 3:
-        return "Monitor";
-      case 4:
-        return "Public";
-      default:
-        return "Unknown";
-    }
-  }
-  // Firebase refs
-  final DatabaseReference busesRef = FirebaseDatabase.instance.ref().child('buses');
-  final DatabaseReference usersRef = FirebaseDatabase.instance.ref().child('Users');
+  final _dbService = DatabaseService();
 
-  // Data storage
-  Map<dynamic, dynamic> buses = {};
-  Map<dynamic, dynamic> filteredBuses = {};
-  Map<dynamic, dynamic> users = {};
-  Map<dynamic, dynamic> filteredUsers = {};
+  List<BusModel> buses = [];
+  List<BusModel> filteredBuses = [];
+  List<UserModel> users = [];
+  List<UserModel> filteredUsers = [];
 
-  // Search controllers
   final TextEditingController busSearchController = TextEditingController();
   final TextEditingController userSearchController = TextEditingController();
 
@@ -52,40 +37,28 @@ class _AdminScreenState extends State<AdminScreen> {
     _loadBuses();
     _loadUsers();
 
-    busSearchController.addListener(() => _filterList(busSearchController.text, isBus: true));
-    userSearchController.addListener(() => _filterList(userSearchController.text, isBus: false));
+    busSearchController.addListener(
+            () => _filterList(busSearchController.text, isBus: true)
+    );
+    userSearchController.addListener(
+            () => _filterList(userSearchController.text, isBus: false)
+    );
   }
 
   void _loadBuses() {
-    busesRef.onValue.listen((event) {
-      final data = event.snapshot.value as Map<dynamic, dynamic>? ?? {};
-      final filtered = <dynamic, dynamic>{};
-      data.forEach((key, value) {
-        final bus = value as Map<dynamic, dynamic>;
-        if (bus['institute'] == widget.institute) {
-          filtered[key] = bus;
-        }
-      });
+    _dbService.getBusesByInstitute(widget.institute).listen((busData) {
       setState(() {
-        buses = filtered;
-        filteredBuses = filtered;
+        buses = busData;
+        filteredBuses = busData;
       });
     });
   }
 
   void _loadUsers() {
-    usersRef.onValue.listen((event) {
-      final data = event.snapshot.value as Map<dynamic, dynamic>? ?? {};
-      final filtered = <dynamic, dynamic>{};
-      data.forEach((key, value) {
-        final user = value as Map<dynamic, dynamic>;
-        if (user['institute'] == widget.institute) {
-          filtered[key] = user;
-        }
-      });
+    _dbService.getUsersByInstitute(widget.institute).listen((userData) {
       setState(() {
-        users = filtered;
-        filteredUsers = filtered;
+        users = userData;
+        filteredUsers = userData;
       });
     });
   }
@@ -94,36 +67,48 @@ class _AdminScreenState extends State<AdminScreen> {
     query = query.toLowerCase();
     if (isBus) {
       setState(() {
-        filteredBuses = buses
-            .map((key, value) => MapEntry(key, value))
-          ..removeWhere((key, _) => !key.toLowerCase().contains(query));
+        filteredBuses = buses.where((bus) {
+          return bus.busId.toLowerCase().contains(query) ||
+              bus.busNumber.toLowerCase().contains(query);
+        }).toList();
       });
     } else {
       setState(() {
-        filteredUsers = users
-            .map((key, value) => MapEntry(key, value))
-          ..removeWhere((key, value) {
-            final name = value['Name']?.toString().toLowerCase() ?? '';
-            final email = value['Email']?.toString().toLowerCase() ?? '';
-            return !name.contains(query) && !email.contains(query);
-          });
+        filteredUsers = users.where((user) {
+          return user.name.toLowerCase().contains(query) ||
+              user.email.toLowerCase().contains(query);
+        }).toList();
       });
     }
   }
 
-  Future<void> _deleteBus(String key) async {
-    final confirmed = await _showConfirmDialog("Delete Bus", "Are you sure you want to delete $key?");
+  Future<void> _deleteBus(String busId) async {
+    final confirmed = await _showConfirmDialog(
+        "Delete Bus",
+        "Are you sure you want to delete $busId?"
+    );
     if (confirmed) {
-      await busesRef.child(key).remove();
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Deleted bus $key")));
+      await _dbService.deleteBus(busId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("Deleted bus $busId"))
+        );
+      }
     }
   }
 
   Future<void> _deleteUser(String uid) async {
-    final confirmed = await _showConfirmDialog("Delete User", "Are you sure you want to delete this user?");
+    final confirmed = await _showConfirmDialog(
+        "Delete User",
+        "Are you sure you want to delete this user?"
+    );
     if (confirmed) {
-      await usersRef.child(uid).remove();
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Deleted user")));
+      await _dbService.deleteUser(uid);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Deleted user"))
+        );
+      }
     }
   }
 
@@ -134,21 +119,28 @@ class _AdminScreenState extends State<AdminScreen> {
         title: Text(title),
         content: Text(content),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("Cancel")),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text("Delete")),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text("Cancel")
+          ),
+          TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text("Delete")
+          ),
         ],
       ),
-    )) ??
-        false;
+    )) ?? false;
   }
 
   void _logout(BuildContext context) async {
     await FirebaseAuth.instance.signOut();
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (_) => const LoginScreen()),
-          (route) => false,
-    );
+    if (mounted) {
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+            (route) => false,
+      );
+    }
   }
 
   Future<bool> _onWillPop(BuildContext context) async {
@@ -168,8 +160,7 @@ class _AdminScreenState extends State<AdminScreen> {
           ),
         ],
       ),
-    ) ??
-        false;
+    ) ?? false;
   }
 
   @override
@@ -178,7 +169,7 @@ class _AdminScreenState extends State<AdminScreen> {
       onWillPop: () => _onWillPop(context).then((confirmed) {
         if (confirmed) {
           _logout(context);
-          return false; // prevent default back behavior
+          return false;
         }
         return false;
       }),
@@ -186,7 +177,11 @@ class _AdminScreenState extends State<AdminScreen> {
         appBar: AppBar(
           backgroundColor: Colors.green,
           title: const Text("Admin"),
-          titleTextStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold,fontSize: 20),
+          titleTextStyle: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: 20
+          ),
           centerTitle: true,
           actions: [
             IconButton(
@@ -202,7 +197,6 @@ class _AdminScreenState extends State<AdminScreen> {
           padding: const EdgeInsets.all(12.0),
           child: Column(
             children: [
-              // Buses GroupBox
               Expanded(
                 child: GroupBox(
                   name: widget.name,
@@ -210,32 +204,55 @@ class _AdminScreenState extends State<AdminScreen> {
                   title: "Buses",
                   searchController: busSearchController,
                   items: filteredBuses,
-                  itemBuilder: (key, value) {
-                    final bus = value as Map;
+                  itemBuilder: (bus) {
                     return ListTile(
-                      title: Text(key),
-                      subtitle: Text("Driver: ${bus['driverName']}, Monitor: ${bus['monitorName']}"),
-                      trailing: bus['Status'] == "Active" ? const Icon(Icons.check_circle, color: Colors.green,) : const Icon(Icons.build_circle, color: Colors.red,)
+                      title: Text(bus.busId),
+                      subtitle: Text(
+                          "Driver: ${bus.driverName ?? 'N/A'}, "
+                              "Monitor: ${bus.monitorName ?? 'N/A'}"
+                      ),
+                      trailing: bus.status == "Active"
+                          ? const Icon(Icons.check_circle, color: Colors.green)
+                          : const Icon(Icons.build_circle, color: Colors.red),
                     );
                   },
-                  onDelete: _deleteBus,
-                  onEdit: (key, value) {
+                  onDelete: (item) => _deleteBus((item as BusModel).busId),
+                  onEdit: (item) {
+                    final bus = item as BusModel;
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => AddBusScreen(editKey: key, busData: value, institute: widget.institute,),
+                        builder: (_) => AddBusScreen(
+                          editBusId: bus.busId,
+                          busData: bus,
+                          institute: widget.institute,
+                        ),
                       ),
                     );
                   },
                   onAdd: () {
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => AddBusScreen(institute: widget.institute,)));
+                    Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => AddBusScreen(institute: widget.institute)
+                        )
+                    );
+                  },
+                  onTap: (item) {
+                    final bus = item as BusModel;
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => BusLocationScreen(
+                          busId: bus.busId,
+                          institute: widget.institute,
+                          name: widget.name,
+                        ),
+                      ),
+                    );
                   },
                 ),
               ),
-
-              // const SizedBox(height: 30),
-
-              // Users GroupBox
               Expanded(
                 child: GroupBox(
                   name: widget.name,
@@ -243,25 +260,34 @@ class _AdminScreenState extends State<AdminScreen> {
                   title: "Users",
                   searchController: userSearchController,
                   items: filteredUsers,
-                  itemBuilder: (key, value) {
-                    final user = value as Map;
+                  itemBuilder: (user) {
                     return ListTile(
-                      title: Text(user['Name'] ?? 'No Name'),
-                      subtitle: Text(user['Email'] ?? ''),
-                      trailing: Text(_roleToString(user['Role'])),
+                      title: Text(user.name),
+                      subtitle: Text(user.email),
+                      trailing: Text(user.role),
                     );
                   },
-                  onDelete: _deleteUser,
-                  onEdit: (key, value) {
+                  onDelete: (item) => _deleteUser((item as UserModel).uid),
+                  onEdit: (item) {
+                    final user = item as UserModel;
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => EditUserScreen(editUid: key, userData: value, institute: widget.institute,),
+                        builder: (_) => EditUserScreen(
+                          editUid: user.uid,
+                          userData: user,
+                          institute: widget.institute,
+                        ),
                       ),
                     );
                   },
                   onAdd: () {
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => RegisterScreen(institute: widget.institute,)));
+                    Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => RegisterScreen(institute: widget.institute)
+                        )
+                    );
                   },
                 ),
               ),
@@ -273,17 +299,17 @@ class _AdminScreenState extends State<AdminScreen> {
   }
 }
 
-/// Reusable GroupBox widget
-class GroupBox extends StatelessWidget {
+class GroupBox<T> extends StatelessWidget {
   final String title;
   final TextEditingController searchController;
-  final Map<dynamic, dynamic> items;
-  final Widget Function(dynamic key, dynamic value) itemBuilder;
-  final void Function(String key) onDelete;
-  final void Function(String key, Map value) onEdit;
+  final List<T> items;
+  final Widget Function(T item) itemBuilder;
+  final void Function(T item) onDelete;
+  final void Function(T item) onEdit;
   final VoidCallback onAdd;
   final String institute;
   final String name;
+  final void Function(T item)? onTap;
 
   const GroupBox({
     super.key,
@@ -295,7 +321,8 @@ class GroupBox extends StatelessWidget {
     required this.onEdit,
     required this.onAdd,
     required this.institute,
-    required this.name
+    required this.name,
+    this.onTap,
   });
 
   @override
@@ -309,7 +336,10 @@ class GroupBox extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            Text(
+                title,
+                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)
+            ),
             const SizedBox(height: 10),
             TextField(
               controller: searchController,
@@ -322,22 +352,12 @@ class GroupBox extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             Expanded(
-              child: ListView(
-                children: items.entries.map((entry) {
-                  final key = entry.key;
-                  final value = entry.value as Map;
-
+              child: ListView.builder(
+                itemCount: items.length,
+                itemBuilder: (context, index) {
+                  final item = items[index];
                   return GestureDetector(
-                    onDoubleTap: () {
-                      if (title == "Buses") {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => BusLocationScreen(busId: key, institute: institute, name: name),
-                          ),
-                        );
-                      }
-                    },
+                    onDoubleTap: onTap != null ? () => onTap!(item) : null,
                     child: Padding(
                       padding: const EdgeInsets.symmetric(vertical: 4),
                       child: Slidable(
@@ -345,13 +365,13 @@ class GroupBox extends StatelessWidget {
                           motion: const DrawerMotion(),
                           children: [
                             SlidableAction(
-                              onPressed: (_) => onEdit(key, value),
+                              onPressed: (_) => onEdit(item),
                               backgroundColor: Colors.blue,
                               icon: Icons.edit,
                               label: 'Edit',
                             ),
                             SlidableAction(
-                              onPressed: (_) => onDelete(key),
+                              onPressed: (_) => onDelete(item),
                               backgroundColor: Colors.red,
                               icon: Icons.delete,
                               label: 'Delete',
@@ -364,12 +384,12 @@ class GroupBox extends StatelessWidget {
                             border: Border.all(color: Colors.black, width: 4),
                             borderRadius: BorderRadius.circular(10),
                           ),
-                          child: itemBuilder(key, value),
+                          child: itemBuilder(item),
                         ),
                       ),
                     ),
                   );
-                }).toList(),
+                },
               ),
             ),
             const SizedBox(height: 8),

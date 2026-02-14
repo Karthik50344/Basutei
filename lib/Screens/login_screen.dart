@@ -1,8 +1,9 @@
+// lib/Screens/login_screen.dart
 import 'package:basutei/resources.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import '../services/database_service.dart';
 import 'admin_screen.dart';
 import 'driver_screen.dart';
 import 'monitor_screen.dart';
@@ -20,6 +21,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
   final _auth = FirebaseAuth.instance;
+  final _dbService = DatabaseService();
 
   bool _loading = false;
   String _error = '';
@@ -37,69 +39,95 @@ class _LoginScreenState extends State<LoginScreen> {
       );
 
       final uid = userCredential.user?.uid;
-      if (uid == null) throw FirebaseAuthException(code: 'invalid-user', message: 'User ID not found');
-
-      // Fetch role from database
-      final snapshot = await FirebaseDatabase.instance.ref("Users/$uid/Role").get();
-      final role = snapshot.value;
-      final snapshot1 = await FirebaseDatabase.instance.ref("Users/$uid/institute").get();
-      final institute = snapshot1.value.toString();
-
-      if (role == null) {
-        throw FirebaseAuthException(code: 'no-role', message: 'User role not assigned');
+      if (uid == null) {
+        throw FirebaseAuthException(
+            code: 'invalid-user',
+            message: 'User ID not found'
+        );
       }
 
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) return; // no logged-in user
+      // Fetch user data from new structure
+      final userData = await _dbService.getUser(uid);
 
-      // Get the device FCM token
+      if (userData == null) {
+        throw FirebaseAuthException(
+            code: 'no-user',
+            message: 'User data not found'
+        );
+      }
+
+      // Get and save FCM token
       String? token = await FirebaseMessaging.instance.getToken();
-
       if (token != null) {
-        debugPrint("FCM Token: $token");
-
-        // Save the token in Realtime Database under the user
-        final userRef = FirebaseDatabase.instance.ref('Users/${user.uid}');
-        await userRef.update({'fcmToken': token});
+        await _dbService.updateUser(uid, {'fcmToken': token});
       }
 
       // Navigate based on role
       Widget targetScreen;
-      switch (role) {
-        case 1:
-          final snapshot2 = await FirebaseDatabase.instance.ref("Users/$uid/Name").get();
-          final name = snapshot2.value.toString();
-          targetScreen = AdminScreen(institute: institute, name: name,);
+      switch (userData.role) {
+        case 'admin':
+          targetScreen = AdminScreen(
+            institute: userData.instituteId,
+            name: userData.name,
+          );
           break;
-        case 2:
-          final snapshot3 = await FirebaseDatabase.instance.ref("Users/$uid/Bus").get();
-          final bus = snapshot3.value.toString();
-          targetScreen = DriverScreen(institute: institute, bus: bus);
+        case 'driver':
+          if (userData.assignedBusId == null) {
+            throw FirebaseAuthException(
+                code: 'no-bus',
+                message: 'No bus assigned to driver'
+            );
+          }
+          targetScreen = DriverScreen(
+            institute: userData.instituteId,
+            bus: userData.assignedBusId!,
+          );
           break;
-        case 3:
-          final snapshot4 = await FirebaseDatabase.instance.ref("Users/$uid/Bus").get();
-          final bus = snapshot4.value.toString();
-          targetScreen = MonitorScreen(institute: institute, bus: bus);
+        case 'monitor':
+          if (userData.assignedBusId == null) {
+            throw FirebaseAuthException(
+                code: 'no-bus',
+                message: 'No bus assigned to monitor'
+            );
+          }
+          targetScreen = MonitorScreen(
+            institute: userData.instituteId,
+            bus: userData.assignedBusId!,
+          );
           break;
-        case 4:
-          final snapshot5 = await FirebaseDatabase.instance.ref("Users/$uid/Name").get();
-          final name = snapshot5.value.toString();
-          targetScreen = PublicScreen(institute: institute, name: name);
+        case 'student':
+        case 'parent':
+          targetScreen = PublicScreen(
+            institute: userData.instituteId,
+            name: userData.name,
+            uid: uid,
+          );
           break;
         default:
-          throw FirebaseAuthException(code: 'invalid-role', message: 'Unknown user role');
+          throw FirebaseAuthException(
+              code: 'invalid-role',
+              message: 'Unknown user role: ${userData.role}'
+          );
       }
 
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => targetScreen),
-      );
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => targetScreen),
+        );
+      }
     } on FirebaseAuthException catch (e) {
       setState(() {
         _error = e.message ?? 'Login failed';
       });
+    } catch (e) {
+      setState(() {
+        _error = 'An error occurred: $e';
+      });
     } finally {
-      setState(() => _loading = false);
+      if (mounted) {
+        setState(() => _loading = false);
+      }
     }
   }
 
@@ -112,9 +140,11 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       await _auth.sendPasswordResetEmail(email: email);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Password reset email sent.")),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Password reset email sent.")),
+        );
+      }
     } on FirebaseAuthException catch (e) {
       setState(() => _error = e.message ?? "Error sending reset email.");
     }
@@ -130,10 +160,9 @@ class _LoginScreenState extends State<LoginScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // App Logo
               SizedBox(
                 height: 100,
-                child: Image.asset(ImageResource.logoImage), // Make sure this asset exists
+                child: Image.asset(ImageResource.logoImage),
               ),
               const SizedBox(height: 32),
 
@@ -143,7 +172,6 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               const SizedBox(height: 24),
 
-              // Email Field
               TextField(
                 controller: _emailController,
                 keyboardType: TextInputType.emailAddress,
@@ -155,7 +183,6 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               const SizedBox(height: 16),
 
-              // Password Field
               TextField(
                 controller: _passwordController,
                 obscureText: _obscurePassword,
@@ -177,7 +204,6 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               const SizedBox(height: 12),
 
-              // Error message
               if (_error.isNotEmpty)
                 Text(
                   _error,
@@ -185,7 +211,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               const SizedBox(height: 16),
 
-              // Login Button
               SizedBox(
                 width: double.infinity,
                 child: _loading
@@ -202,7 +227,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
 
-              // Forgot Password
               TextButton(
                 onPressed: _forgotPassword,
                 child: const Text("Forgot Password?"),

@@ -1,13 +1,20 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/services.dart';
+import '../services/database_service.dart';
+import '../models/bus_model.dart';
+import '../models/route_model.dart';
 
 class AddBusScreen extends StatefulWidget {
-  final String? editKey;
-  final Map? busData;
+  final String? editBusId;
+  final BusModel? busData;
   final String institute;
 
-  const AddBusScreen({super.key, this.editKey, this.busData, required this.institute});
+  const AddBusScreen({
+    super.key,
+    this.editBusId,
+    this.busData,
+    required this.institute
+  });
 
   @override
   State<AddBusScreen> createState() => _AddBusScreenState();
@@ -15,91 +22,112 @@ class AddBusScreen extends StatefulWidget {
 
 class _AddBusScreenState extends State<AddBusScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _busNameController = TextEditingController();
-  final _busNoController = TextEditingController();
-  final _driverMobileController = TextEditingController();
-  final _monitorNameController = TextEditingController();
-  final _monitorMobileController = TextEditingController();
+  final _dbService = DatabaseService();
+
+  final _busIdController = TextEditingController();
+  final _busNumberController = TextEditingController();
   final _vehicleModelController = TextEditingController();
   final _vehicleNumberController = TextEditingController();
-  String _selectedRoute = "Select Route";
-  String _selectedStatus = "Select Status";
-  List<String> _filteredRoutes = ["Select Route"];
-  final busStatus = ["Select Status", "Active", "Not Active"];
-  final _ref = FirebaseDatabase.instance.ref().child("buses");
-  final _route = FirebaseDatabase.instance.ref().child("Routs");
+
+  String? _selectedRoute;
+  String _selectedStatus = "Active";
+  List<RouteModel> _routes = [];
+  final List<String> busStatus = ["Active", "Not Active"];
+
+  bool _loading = false;
 
   @override
   void initState() {
     super.initState();
-    if (widget.editKey != null && widget.busData != null) {
-      _busNameController.text = widget.editKey!;
-      _busNoController.text = widget.busData!['driverName'] ?? '';
-      _driverMobileController.text = widget.busData!['driverMobile'].toString() ?? '';
-      _monitorNameController.text = widget.busData!['monitorName'] ?? '';
-      _monitorMobileController.text = widget.busData!['monitorMobile'] ?? '';
-      _vehicleModelController.text = widget.busData!['vehicleModel'] ?? '';
-      _vehicleNumberController.text = widget.busData!['vehicleNumber'] ?? '';
-      _busNoController.text = widget.busData!['routeIdentityNumber'] ?? '';
-      _selectedStatus = widget.busData!['Status'] ?? '';
+    if (widget.editBusId != null && widget.busData != null) {
+      _busIdController.text = widget.editBusId!;
+      _busNumberController.text = widget.busData!.busNumber;
+      _vehicleModelController.text = widget.busData!.vehicleModel;
+      _vehicleNumberController.text = widget.busData!.vehicleNumber;
+      _selectedRoute = widget.busData!.routeId;
+      _selectedStatus = widget.busData!.status;
     }
-    loadRouts();
+    _loadRoutes();
   }
 
-  loadRouts()async{
-    final snapshot = await _route.get();
-    if (snapshot.exists) {
-      final data = snapshot.value as Map;
-      data.forEach((key, value) {
-        _filteredRoutes.add(key);
+  Future<void> _loadRoutes() async {
+    _dbService.getRoutesByInstitute(widget.institute).listen((routes) {
+      setState(() {
+        _routes = routes;
       });
-    }
-    _selectedRoute = widget.busData!['Route'] ?? '';
-    setState(() {});
+    });
   }
 
   Future<void> _saveBus() async {
     if (!_formKey.currentState!.validate()) return;
+    setState(() => _loading = true);
 
-    final busName = _busNameController.text.trim();
-    final data = {
-      "vehicleModel": _vehicleModelController.text.trim(),
-      "vehicleNumber": _vehicleNumberController.text.trim(),
-      "routeIdentityNumber": _busNoController.text.trim(),
-      "Status": _selectedStatus == "Select Status" ? "" : _selectedStatus,
-      "Route": _selectedRoute == "Select Route" ? "" : _selectedRoute,
-      "location": {"lat": "", "lng": ""},
-      "institute": widget.institute
-    };
-    if(widget.editKey == null){
-      data["isRunning"] = false;
-      data["driverName"] = "";
-      data["driverMobile"] = "";
-      data["monitorName"] = "";
-      data["monitorMobile"] = "";
+    try {
+      final busId = _busIdController.text.trim();
+
+      final bus = BusModel(
+        busId: busId,
+        busNumber: _busNumberController.text.trim(),
+        instituteId: widget.institute,
+        driverId: widget.busData?.driverId,
+        driverName: widget.busData?.driverName,
+        driverMobile: widget.busData?.driverMobile,
+        monitorId: widget.busData?.monitorId,
+        monitorName: widget.busData?.monitorName,
+        monitorMobile: widget.busData?.monitorMobile,
+        routeId: _selectedRoute,
+        vehicleModel: _vehicleModelController.text.trim(),
+        vehicleNumber: _vehicleNumberController.text.trim(),
+        status: _selectedStatus,
+        isActive: widget.busData?.isActive ?? false,
+      );
+
+      if (widget.editBusId == null) {
+        await _dbService.createBus(bus);
+      } else {
+        await _dbService.updateBus(busId, bus.toJson());
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+                content: Text(
+                    widget.editBusId != null ? "Bus updated" : "Bus added"
+                )
+            )
+        );
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error: $e")),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _loading = false);
+      }
     }
-
-    await _ref.child(busName).set(data);
-
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(widget.editKey != null ? "Bus updated" : "Bus added")));
-    Navigator.pop(context);
   }
 
   @override
   Widget build(BuildContext context) {
-    final isEditing = widget.editKey != null;
+    final isEditing = widget.editBusId != null;
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.green,
         title: Text(isEditing ? "Update Bus" : "Add Bus"),
-        titleTextStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold,fontSize: 20),
+        titleTextStyle: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: 20
+        ),
         centerTitle: true,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           color: Colors.white,
-          onPressed: () {
-            Navigator.pop(context);
-          },
+          onPressed: () => Navigator.pop(context),
         ),
       ),
       body: Padding(
@@ -109,48 +137,46 @@ class _AddBusScreenState extends State<AddBusScreen> {
           child: ListView(
             children: [
               TextFormField(
-                controller: _busNameController,
+                controller: _busIdController,
                 enabled: !isEditing,
-                decoration: const InputDecoration(labelText: "Bus Name"),
+                decoration: const InputDecoration(
+                    labelText: "Bus ID",
+                    hintText: "e.g., bus_01"
+                ),
                 validator: (val) => val!.isEmpty ? "Required" : null,
               ),
               const SizedBox(height: 10),
               TextFormField(
-                controller: _busNoController,
-                decoration: const InputDecoration(labelText: "Bus No"),
+                controller: _busNumberController,
+                decoration: const InputDecoration(
+                    labelText: "Bus Number",
+                    hintText: "e.g., TN09AB1234"
+                ),
                 validator: (val) => val!.isEmpty ? "Required" : null,
               ),
               const SizedBox(height: 10),
-              DropdownButtonFormField<String>(
-                value: _selectedRoute,
-                decoration: const InputDecoration(labelText: "Route"),
-                items: _filteredRoutes.map((bus) {
-                  return DropdownMenuItem(value: bus, child: Text(bus));
-                }).toList(),
-                onChanged: (val) => setState(() => _selectedRoute = val.toString()),
-                validator: (val) => val == null ? "Select Route" : null,
-              ),
+              if (_routes.isNotEmpty)
+                DropdownButtonFormField<String>(
+                  value: _selectedRoute,
+                  decoration: const InputDecoration(labelText: "Route"),
+                  items: _routes.map((route) {
+                    return DropdownMenuItem(
+                        value: route.routeId,
+                        child: Text(route.name)
+                    );
+                  }).toList(),
+                  onChanged: (val) => setState(() => _selectedRoute = val),
+                ),
               const SizedBox(height: 10),
               DropdownButtonFormField<String>(
                 value: _selectedStatus,
                 decoration: const InputDecoration(labelText: "Status"),
-                items: busStatus.map((bus) {
-                  return DropdownMenuItem(value: bus, child: Text(bus));
+                items: busStatus.map((status) {
+                  return DropdownMenuItem(value: status, child: Text(status));
                 }).toList(),
-                onChanged: (val) => setState(() => _selectedStatus = val.toString()),
-                validator: (val) => val == null ? "Select Status" : null,
+                onChanged: (val) => setState(() => _selectedStatus = val!),
               ),
               const SizedBox(height: 10),
-              // TextFormField(
-              //   keyboardType: TextInputType.phone,
-              //   inputFormatters: [
-              //     FilteringTextInputFormatter.digitsOnly,
-              //     LengthLimitingTextInputFormatter(10)],
-              //   controller: _monitorMobileController,
-              //   decoration: const InputDecoration(labelText: "Monitor Mobile"),
-              //   validator: (val) => val!.isEmpty ? "Required" : null,
-              // ),
-              // const SizedBox(height: 10),
               TextFormField(
                 controller: _vehicleModelController,
                 decoration: const InputDecoration(labelText: "Vehicle Model"),
@@ -163,10 +189,15 @@ class _AddBusScreenState extends State<AddBusScreen> {
                 validator: (val) => val!.isEmpty ? "Required" : null,
               ),
               const SizedBox(height: 20),
-              ElevatedButton(
+              _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : ElevatedButton(
                 onPressed: _saveBus,
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
                 child: Text(isEditing ? "Update" : "Create"),
-              )
+              ),
             ],
           ),
         ),

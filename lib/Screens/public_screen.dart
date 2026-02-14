@@ -1,72 +1,83 @@
+// lib/Screens/public_screen.dart
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_database/firebase_database.dart';
+import '../services/database_service.dart';
+import '../models/bus_model.dart';
 import 'live_bus_route.dart';
 import 'login_screen.dart';
 
 class PublicScreen extends StatefulWidget {
   final String institute;
   final String name;
-  const PublicScreen({super.key, required this.institute, required this.name});
+  final String uid;
+  const PublicScreen({
+    super.key,
+    required this.institute,
+    required this.name,
+    required this.uid
+  });
 
   @override
   State<PublicScreen> createState() => _PublicScreenState();
 }
 
 class _PublicScreenState extends State<PublicScreen> {
-  // Firebase refs
-  final DatabaseReference busesRef = FirebaseDatabase.instance.ref().child('buses');
+  final _dbService = DatabaseService();
 
-  // Data storage
-  Map<dynamic, dynamic> buses = {};
-  Map<dynamic, dynamic> filteredBuses = {};
+  List<BusModel> buses = [];
+  List<BusModel> filteredBuses = [];
+  String? userAssignedBus;
 
-  // Search controllers
   final TextEditingController busSearchController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _loadBuses();
+    _loadUserBus();
 
-    busSearchController.addListener(() => _filterList(busSearchController.text, isBus: true));
+    busSearchController.addListener(
+            () => _filterList(busSearchController.text)
+    );
   }
 
   void _loadBuses() {
-    busesRef.onValue.listen((event) {
-      final data = event.snapshot.value as Map<dynamic, dynamic>? ?? {};
-      final filtered = <dynamic, dynamic>{};
-      data.forEach((key, value) {
-        final bus = value as Map<dynamic, dynamic>;
-        if (bus['institute'] == widget.institute) {
-          filtered[key] = bus;
-        }
-      });
+    _dbService.getBusesByInstitute(widget.institute).listen((busData) {
       setState(() {
-        buses = filtered;
-        filteredBuses = filtered;
+        buses = busData;
+        filteredBuses = busData;
       });
     });
   }
 
-  void _filterList(String query, {required bool isBus}) {
-    query = query.toLowerCase();
-    if (isBus) {
+  void _loadUserBus() {
+    _dbService.watchUserBus(widget.uid).listen((busId) {
       setState(() {
-        filteredBuses = buses
-            .map((key, value) => MapEntry(key, value))
-          ..removeWhere((key, _) => !key.toLowerCase().contains(query));
+        userAssignedBus = busId;
       });
-    }
+    });
+  }
+
+  void _filterList(String query) {
+    query = query.toLowerCase();
+    setState(() {
+      filteredBuses = buses.where((bus) {
+        return bus.busId.toLowerCase().contains(query) ||
+            bus.busNumber.toLowerCase().contains(query) ||
+            (bus.driverName?.toLowerCase().contains(query) ?? false);
+      }).toList();
+    });
   }
 
   void _logout(BuildContext context) async {
     await FirebaseAuth.instance.signOut();
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (_) => const LoginScreen()),
-          (route) => false,
-    );
+    if (mounted) {
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+            (route) => false,
+      );
+    }
   }
 
   Future<bool> _onWillPop(BuildContext context) async {
@@ -86,8 +97,7 @@ class _PublicScreenState extends State<PublicScreen> {
           ),
         ],
       ),
-    ) ??
-        false;
+    ) ?? false;
   }
 
   @override
@@ -96,15 +106,19 @@ class _PublicScreenState extends State<PublicScreen> {
       onWillPop: () => _onWillPop(context).then((confirmed) {
         if (confirmed) {
           _logout(context);
-          return false; // prevent default back behavior
+          return false;
         }
         return false;
       }),
       child: Scaffold(
         appBar: AppBar(
           backgroundColor: Colors.green,
-          title: const Text("Public"),
-          titleTextStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold,fontSize: 20),
+          title: const Text("Bus Tracking"),
+          titleTextStyle: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: 20
+          ),
           centerTitle: true,
           actions: [
             IconButton(
@@ -120,21 +134,71 @@ class _PublicScreenState extends State<PublicScreen> {
           padding: const EdgeInsets.all(12.0),
           child: Column(
             children: [
+              // User info card
+              if (userAssignedBus != null)
+                Card(
+                  color: Colors.green[50],
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.info_outline, color: Colors.green),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                  "Your Assigned Bus",
+                                  style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16
+                                  )
+                              ),
+                              Text(
+                                  userAssignedBus!,
+                                  style: const TextStyle(fontSize: 14)
+                              ),
+                            ],
+                          ),
+                        ),
+                        ElevatedButton(
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => BusLocationScreen(
+                                  busId: userAssignedBus!,
+                                  institute: widget.institute,
+                                  name: widget.name,
+                                ),
+                              ),
+                            );
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.green,
+                          ),
+                          child: const Text(
+                              "Track",
+                              style: TextStyle(color: Colors.white)
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 12),
+
               // Buses GroupBox
-              GroupBox(
-                name: widget.name,
-                institute: widget.institute,
-                title: "Buses",
-                searchController: busSearchController,
-                items: filteredBuses,
-                itemBuilder: (key, value) {
-                  final bus = value as Map;
-                  return ListTile(
-                    title: Text(key),
-                    subtitle: Text("Driver: ${bus['driverName']}, Monitor: ${bus['monitorName']}"),
-                    trailing: bus['Status'] == "Active" ? const Icon(Icons.check_circle, color: Colors.green,) : const Icon(Icons.build_circle, color: Colors.red,)
-                  );
-                },
+              Expanded(
+                child: GroupBox(
+                  name: widget.name,
+                  institute: widget.institute,
+                  title: "All Buses",
+                  searchController: busSearchController,
+                  items: filteredBuses,
+                  userAssignedBus: userAssignedBus,
+                ),
               ),
             ],
           ),
@@ -144,80 +208,153 @@ class _PublicScreenState extends State<PublicScreen> {
   }
 }
 
-/// Reusable GroupBox widget
 class GroupBox extends StatelessWidget {
   final String title;
   final TextEditingController searchController;
-  final Map<dynamic, dynamic> items;
-  final Widget Function(dynamic key, dynamic value) itemBuilder;
+  final List<BusModel> items;
   final String institute;
   final String name;
+  final String? userAssignedBus;
 
   const GroupBox({
     super.key,
     required this.title,
     required this.searchController,
     required this.items,
-    required this.itemBuilder,
     required this.institute,
-    required this.name
+    required this.name,
+    this.userAssignedBus,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
-      child: Card(
-        elevation: 4,
-        color: Colors.grey[200],
-        child: Padding(
-          padding: const EdgeInsets.all(12.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 10),
-              TextField(
-                controller: searchController,
-                decoration: InputDecoration(
-                  fillColor: Colors.white,
-                  labelText: "Search $title",
-                  prefixIcon: const Icon(Icons.search),
-                  border: const OutlineInputBorder(),
-                ),
+    return Card(
+      elevation: 4,
+      color: Colors.grey[200],
+      child: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+                title,
+                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: searchController,
+              decoration: InputDecoration(
+                fillColor: Colors.white,
+                filled: true,
+                labelText: "Search $title",
+                prefixIcon: const Icon(Icons.search),
+                border: const OutlineInputBorder(),
               ),
-              const SizedBox(height: 12),
-              ...items.entries.map((entry) {
-                final key = entry.key;
-                final value = entry.value as Map;
-      
-                return GestureDetector(
-                  onDoubleTap: (){
-                    if(title == "Buses") {
+            ),
+            const SizedBox(height: 12),
+            Expanded(
+              child: ListView.builder(
+                itemCount: items.length,
+                itemBuilder: (context, index) {
+                  final bus = items[index];
+                  final isUserBus = bus.busId == userAssignedBus;
+
+                  return GestureDetector(
+                    onTap: () {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) => BusLocationScreen(busId: key, institute: institute, name: name),
+                          builder: (_) => BusLocationScreen(
+                            busId: bus.busId,
+                            institute: institute,
+                            name: name,
+                          ),
                         ),
                       );
-                    }
-                  },
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        border: Border.all(
-                          color: Colors.black,
-                          width: 4,
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: isUserBus ? Colors.green[100] : Colors.white,
+                          border: Border.all(
+                            color: isUserBus ? Colors.green : Colors.black,
+                            width: isUserBus ? 3 : 2,
+                          ),
+                          borderRadius: BorderRadius.circular(10),
                         ),
-                        borderRadius: BorderRadius.circular(10)
+                        child: ListTile(
+                          leading: Icon(
+                            Icons.directions_bus,
+                            color: isUserBus ? Colors.green : Colors.grey,
+                          ),
+                          title: Row(
+                            children: [
+                              Text(
+                                  bus.busId,
+                                  style: TextStyle(
+                                      fontWeight: isUserBus
+                                          ? FontWeight.bold
+                                          : FontWeight.normal
+                                  )
+                              ),
+                              if (isUserBus) ...[
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 2
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.green,
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: const Text(
+                                      "My Bus",
+                                      style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 10
+                                      )
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                          subtitle: Text(
+                              "Driver: ${bus.driverName ?? 'N/A'}, "
+                                  "Number: ${bus.busNumber}"
+                          ),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                bus.status == "Active"
+                                    ? Icons.check_circle
+                                    : Icons.build_circle,
+                                color: bus.status == "Active"
+                                    ? Colors.green
+                                    : Colors.red,
+                              ),
+                              const SizedBox(width: 8),
+                              if (bus.isActive)
+                                Container(
+                                  width: 12,
+                                  height: 12,
+                                  decoration: const BoxDecoration(
+                                    color: Colors.green,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
                       ),
-                      child: itemBuilder(key, value)),
-                  ),
-                );
-              }).toList(),
-            ],
-          ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
         ),
       ),
     );

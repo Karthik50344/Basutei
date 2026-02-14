@@ -41,54 +41,49 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyAUhJCgZiNrp3bHNj__G26a6fpM4W8QA8o',
-    appId: '1:907300050462:web:6c4862e1862d5c82df400f',
-    messagingSenderId: '907300050462',
-    projectId: 'campus-transport-safety',
-    authDomain: 'campus-transport-safety.firebaseapp.com',
-    databaseURL: 'https://campus-transport-safety-default-rtdb.firebaseio.com',
-    storageBucket: 'campus-transport-safety.firebasestorage.app',
-    measurementId: 'G-WSBK3YNZ1P',
+    apiKey: 'AIzaSyCPuBKuNBJG9SfbUs3Hiu7AlqyUgDrly6M',
+    appId: '1:163576928903:web:b04e8e34f18a2dcab77622',
+    messagingSenderId: '163576928903',
+    projectId: 'basutei-1aba3',
+    authDomain: 'basutei-1aba3.firebaseapp.com',
+    storageBucket: 'basutei-1aba3.firebasestorage.app',
+    measurementId: 'G-SLXSKZT1FE',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyBCZT-E3JddLRgOlUQa78TfsYNQkIleCyA',
-    appId: '1:907300050462:android:74af460edabf16f5df400f',
-    messagingSenderId: '907300050462',
-    projectId: 'campus-transport-safety',
-    databaseURL: 'https://campus-transport-safety-default-rtdb.firebaseio.com',
-    storageBucket: 'campus-transport-safety.firebasestorage.app',
+    apiKey: 'AIzaSyCsbNZx-DUaEurW9woT0vqi0J7pF7O0AFU',
+    appId: '1:163576928903:android:93d52baf97939220b77622',
+    messagingSenderId: '163576928903',
+    projectId: 'basutei-1aba3',
+    storageBucket: 'basutei-1aba3.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyBanUncCnoa0D4PmNnFJOs9ATWfRvi7LXw',
-    appId: '1:907300050462:ios:1ef439b6132c3b63df400f',
-    messagingSenderId: '907300050462',
-    projectId: 'campus-transport-safety',
-    databaseURL: 'https://campus-transport-safety-default-rtdb.firebaseio.com',
-    storageBucket: 'campus-transport-safety.firebasestorage.app',
-    iosBundleId: 'com.example.liveLocationTracker',
+    apiKey: 'AIzaSyCp5AZ40ZgjRzyFuie48Qg4oJrWx1NEQwM',
+    appId: '1:163576928903:ios:a2b71d98644bf6d8b77622',
+    messagingSenderId: '163576928903',
+    projectId: 'basutei-1aba3',
+    storageBucket: 'basutei-1aba3.firebasestorage.app',
+    iosBundleId: 'com.example.basutei',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'AIzaSyBanUncCnoa0D4PmNnFJOs9ATWfRvi7LXw',
-    appId: '1:907300050462:ios:1ef439b6132c3b63df400f',
-    messagingSenderId: '907300050462',
-    projectId: 'campus-transport-safety',
-    databaseURL: 'https://campus-transport-safety-default-rtdb.firebaseio.com',
-    storageBucket: 'campus-transport-safety.firebasestorage.app',
-    iosBundleId: 'com.example.liveLocationTracker',
+    apiKey: 'AIzaSyCp5AZ40ZgjRzyFuie48Qg4oJrWx1NEQwM',
+    appId: '1:163576928903:ios:a2b71d98644bf6d8b77622',
+    messagingSenderId: '163576928903',
+    projectId: 'basutei-1aba3',
+    storageBucket: 'basutei-1aba3.firebasestorage.app',
+    iosBundleId: 'com.example.basutei',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'AIzaSyAUhJCgZiNrp3bHNj__G26a6fpM4W8QA8o',
-    appId: '1:907300050462:web:8dfb06d94fc17b49df400f',
-    messagingSenderId: '907300050462',
-    projectId: 'campus-transport-safety',
-    authDomain: 'campus-transport-safety.firebaseapp.com',
-    databaseURL: 'https://campus-transport-safety-default-rtdb.firebaseio.com',
-    storageBucket: 'campus-transport-safety.firebasestorage.app',
-    measurementId: 'G-PV0MKE8K9Q',
+    apiKey: 'AIzaSyCPuBKuNBJG9SfbUs3Hiu7AlqyUgDrly6M',
+    appId: '1:163576928903:web:54e1b979c2a838acb77622',
+    messagingSenderId: '163576928903',
+    projectId: 'basutei-1aba3',
+    authDomain: 'basutei-1aba3.firebaseapp.com',
+    storageBucket: 'basutei-1aba3.firebasestorage.app',
+    measurementId: 'G-LNFMKE0EGQ',
   );
 
 }

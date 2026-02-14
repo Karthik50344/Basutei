@@ -1,7 +1,10 @@
+// lib/Screens/register_screen.dart
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../services/database_service.dart';
+import '../models/user_model.dart';
+import '../models/bus_model.dart';
 
 class RegisterScreen extends StatefulWidget {
   final String institute;
@@ -13,6 +16,7 @@ class RegisterScreen extends StatefulWidget {
 
 class _RegisterScreenState extends State<RegisterScreen> {
   final _formKey = GlobalKey<FormState>();
+  final _dbService = DatabaseService();
 
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
@@ -20,41 +24,28 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
 
-  String _selectedRole = 'Admin';
+  String _selectedRole = 'student';
   String? _selectedBus;
-  final List<String> _roles = ['Admin', 'Driver', 'Monitor', 'Public'];
-  final Map<String, int> _roleID = {"Admin": 1, "Driver": 2, "Monitor": 3, "Public": 4};
-  List<String> _buses = [];
+  final List<String> _roles = ['admin', 'driver', 'monitor', 'student', 'parent'];
+  List<BusModel> _buses = [];
 
   bool _loading = false;
 
-  bool get _showBusDropdown => _selectedRole == 'Driver' || _selectedRole == 'Monitor';
+  bool get _showBusDropdown => _selectedRole == 'driver' ||
+      _selectedRole == 'monitor' ||
+      _selectedRole == 'student';
 
   @override
   void initState() {
-    _loadBuses();
     super.initState();
+    _loadBuses();
   }
 
   Future<void> _loadBuses() async {
-    final busRef = FirebaseDatabase.instance.ref('buses');
-    final snapshot = await busRef.get();
-
-    final buses = <String>[];
-
-    if (snapshot.exists) {
-      final data = snapshot.value as Map;
-
-      data.forEach((key, value) {
-        final bus = Map<String, dynamic>.from(value);
-        if (bus['institute'] == widget.institute) {
-          buses.add(key);
-        }
+    _dbService.getBusesByInstitute(widget.institute).listen((buses) {
+      setState(() {
+        _buses = buses;
       });
-    }
-
-    setState(() {
-      _buses = buses;
     });
   }
 
@@ -64,50 +55,54 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
     try {
       // Create user in Firebase Auth
-      final userCredential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+      final userCredential = await FirebaseAuth.instance
+          .createUserWithEmailAndPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
 
       final uid = userCredential.user!.uid;
 
-      // Save user info in Realtime Database
-      final userRef = FirebaseDatabase.instance.ref().child("Users/$uid");
-      await userRef.set({
-        "Name": _nameController.text.trim(),
-        "Email": _emailController.text.trim(),
-        "Mobile": _mobileController.text.trim(),
-        "Role": _roleID[_selectedRole],
-        "institute": widget.institute,
-        "Bus": _showBusDropdown ? _selectedBus : "",
-        "fcmToken": ""
-      });
+      // Create user model
+      final user = UserModel(
+        uid: uid,
+        name: _nameController.text.trim(),
+        email: _emailController.text.trim(),
+        mobile: _mobileController.text.trim(),
+        role: _selectedRole,
+        instituteId: widget.institute,
+        assignedBusId: (_selectedRole == 'driver' || _selectedRole == 'monitor')
+            ? _selectedBus
+            : null,
+        busId: _selectedRole == 'student' ? _selectedBus : null,
+        fcmToken: '',
+      );
 
-      if(_showBusDropdown){
-        final busRef = FirebaseDatabase.instance.ref().child("buses/$_selectedBus");
-        if(_selectedRole == "Driver") {
-          await busRef.update({
-            "driverName": _nameController.text.trim(),
-            "driverMobile": _mobileController.text.trim()
-          });
-        } else if(_selectedRole == "Monitor") {
-          await busRef.update({
-            "monitorName": _nameController.text.trim(),
-            "monitorMobile": _mobileController.text.trim()
-          });
-        }
+      // Save user in database
+      await _dbService.createUser(user);
+
+      // If driver or monitor, update bus
+      if ((_selectedRole == 'driver' || _selectedRole == 'monitor') &&
+          _selectedBus != null) {
+        await _dbService.assignUserToBus(uid, _selectedBus!, _selectedRole);
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("User registered successfully")),
-      );
-      Navigator.pop(context); // Back to AdminScreen
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("User registered successfully")),
+        );
+        Navigator.pop(context);
+      }
     } on FirebaseAuthException catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Error: ${e.message}")),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error: ${e.message}")),
+        );
+      }
     } finally {
-      setState(() => _loading = false);
+      if (mounted) {
+        setState(() => _loading = false);
+      }
     }
   }
 
@@ -117,14 +112,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
       appBar: AppBar(
         backgroundColor: Colors.green,
         title: const Text("Add User"),
-        titleTextStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold,fontSize: 20),
+        titleTextStyle: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: 20
+        ),
         centerTitle: true,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           color: Colors.white,
-          onPressed: () {
-            Navigator.pop(context);
-          },
+          onPressed: () => Navigator.pop(context),
         ),
       ),
       body: Padding(
@@ -143,7 +140,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 controller: _emailController,
                 decoration: const InputDecoration(labelText: "Email"),
                 keyboardType: TextInputType.emailAddress,
-                validator: (val) => val!.isEmpty ? "Required" : null,
+                validator: (val) {
+                  if (val!.isEmpty) return "Required";
+                  if (!val.contains('@')) return "Invalid email";
+                  return null;
+                },
               ),
               const SizedBox(height: 12),
               TextFormField(
@@ -152,15 +153,23 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 keyboardType: TextInputType.phone,
                 inputFormatters: [
                   FilteringTextInputFormatter.digitsOnly,
-                  LengthLimitingTextInputFormatter(10)],
-                validator: (val) => val!.isEmpty ? "Required" : null,
+                  LengthLimitingTextInputFormatter(10)
+                ],
+                validator: (val) {
+                  if (val!.isEmpty) return "Required";
+                  if (val.length != 10) return "Must be 10 digits";
+                  return null;
+                },
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
                 value: _selectedRole,
                 decoration: const InputDecoration(labelText: "Role"),
                 items: _roles.map((role) {
-                  return DropdownMenuItem(value: role, child: Text(role));
+                  return DropdownMenuItem(
+                      value: role,
+                      child: Text(role[0].toUpperCase() + role.substring(1))
+                  );
                 }).toList(),
                 onChanged: (val) => setState(() {
                   _selectedRole = val!;
@@ -168,22 +177,36 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 }),
               ),
               const SizedBox(height: 12),
-              if (_showBusDropdown)
+              if (_showBusDropdown) ...[
                 DropdownButtonFormField<String>(
                   value: _selectedBus,
-                  decoration: const InputDecoration(labelText: "Bus"),
+                  decoration: InputDecoration(
+                      labelText: _selectedRole == 'student'
+                          ? "Assigned Bus"
+                          : "Bus to Operate"
+                  ),
                   items: _buses.map((bus) {
-                    return DropdownMenuItem(value: bus, child: Text(bus));
+                    return DropdownMenuItem(
+                        value: bus.busId,
+                        child: Text('${bus.busId} (${bus.busNumber})')
+                    );
                   }).toList(),
                   onChanged: (val) => setState(() => _selectedBus = val),
-                  validator: (val) => val == null ? "Select a bus" : null,
+                  validator: _selectedRole == 'student'
+                      ? null
+                      : (val) => val == null ? "Select a bus" : null,
                 ),
-              if (_showBusDropdown) const SizedBox(height: 12),
+                const SizedBox(height: 12),
+              ],
               TextFormField(
                 controller: _passwordController,
                 decoration: const InputDecoration(labelText: "Password"),
                 obscureText: true,
-                validator: (val) => val!.isEmpty ? "Required" : null,
+                validator: (val) {
+                  if (val!.isEmpty) return "Required";
+                  if (val.length < 6) return "At least 6 characters";
+                  return null;
+                },
               ),
               const SizedBox(height: 12),
               TextFormField(
@@ -191,13 +214,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 decoration: const InputDecoration(labelText: "Confirm Password"),
                 obscureText: true,
                 validator: (val) =>
-                val != _passwordController.text ? "Passwords do not match" : null,
+                val != _passwordController.text
+                    ? "Passwords do not match"
+                    : null,
               ),
               const SizedBox(height: 20),
               _loading
                   ? const Center(child: CircularProgressIndicator())
                   : ElevatedButton(
                 onPressed: _registerUser,
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
                 child: const Text("Register"),
               ),
             ],

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "163576928903",
+    "project_id": "basutei-1aba3",
+    "storage_bucket": "basutei-1aba3.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:163576928903:android:93d52baf97939220b77622",
+        "android_client_info": {
+          "package_name": "com.example.basutei"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCsbNZx-DUaEurW9woT0vqi0J7pF7O0AFU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
